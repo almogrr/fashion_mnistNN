@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clothing Identifier with PyScript</title>
+    <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css">
+    <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+</head>
+<body>
+    <h1>Clothing Identifier</h1>
+
+    <!-- Upload Image Section -->
+    <div>
+        <label for="file-upload" class="custom-file-upload">Upload Image</label>
+        <input type="file" id="file-upload" />
+    </div>
+
+    <!-- Display Image -->
+    <img id="display-image" alt="Uploaded Image" style="display: none; width: 280px; height: 280px;" />
+
+    <!-- Buttons -->
+    <div>
+        <button id="train-model">Train Model</button>
+        <button id="test-random-image">Test Random Image</button>
+    </div>
+
+    <!-- Display Result -->
+    <h2 id="result"></h2>
+
+    <!-- PyScript -->
+    <py-script>
+        import asyncio
+        from pyodide.http import pyfetch
+        from js import document, FileReader
+
+        async def install_packages():
+            try:
+                # Install necessary packages
+                await micropip.install('numpy')
+                await micropip.install('pillow')
+                await micropip.install('tensorflow')
+                return True
+            except Exception as e:
+                document.getElementById('result').textContent = f"Package installation error: {e}"
+                return False
+
+        async def load_fashion_mnist():
+            import tensorflow as tf
+            fashion_mnist = tf.keras.datasets.fashion_mnist
+            (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
+            x_train, x_test = x_train / 255.0, x_test / 255.0
+            return x_test, y_test
+
+        def preprocess_image(image):
+            from PIL import Image
+            import numpy as np
+            image = image.convert('L').resize((28, 28))
+            image_array = np.array(image).astype(np.float32) / 255.0
+            return image_array.reshape(1, 28, 28)
+
+        async def main():
+            packages_installed = await install_packages()
+            if not packages_installed:
+                return
+
+            import tensorflow as tf
+            import numpy as np
+            from PIL import Image
+
+            # Load Fashion MNIST dataset
+            x_test, y_test = await load_fashion_mnist()
+            model = tf.keras.models.load_model('tfjs_model')  # Adjust path as needed
+
+            class ClothingLabel:
+                T_SHIRT = 0
+                TROUSER = 1
+                PULLOVER = 2
+                DRESS = 3
+                COAT = 4
+                SANDAL = 5
+                SHIRT = 6
+                SNEAKER = 7
+                BAG = 8
+                ANKLE_BOOT = 9
+                NOT_CLOTHING = 10
+
+            def upload_image(event):
+                file = document.getElementById('file-upload').files[0]
+                reader = FileReader.new()
+                reader.readAsDataURL(file)
+
+                def on_load(event):
+                    import base64
+                    from io import BytesIO
+                    img_element = document.getElementById('display-image')
+                    img_element.src = reader.result
+                    img_element.style.display = 'block'
+                    img = Image.open(BytesIO(base64.b64decode(reader.result.split(',')[1])))
+                    img_array = preprocess_image(img)
+                    identified_label = np.argmax(model.predict(img_array), axis=1)[0]
+                    label_text = ClothingLabel(identified_label).name.replace('_', ' ').title()
+                    if label_text == "Not Clothing":
+                        label_text = "This is not a clothing item."
+                    document.getElementById('result').textContent = f"Identified: {label_text}"
+
+                reader.onload = on_load
+
+            def train_model(event):
+                document.getElementById('result').textContent = "Training function is currently disabled in this demo."
+
+            def test_random_image(event):
+                idx = np.random.randint(0, len(x_test))
+                img_array = x_test[idx].reshape(1, 28, 28)
+                identified_label = np.argmax(model.predict(img_array), axis=1)[0]
+                label_text = ClothingLabel(identified_label).name.replace('_', ' ').title()
+                if label_text == "Not Clothing":
+                    label_text = "This is not a clothing item."
+                document.getElementById('result').textContent = f"Random Image Identified: {label_text}"
+
+            document.getElementById('file-upload').addEventListener('change', upload_image)
+            document.getElementById('train-model').addEventListener('click', train_model)
+            document.getElementById('test-random-image').addEventListener('click', test_random_image)
+
+        asyncio.ensure_future(main())
+    </py-script>
+</body>
+</html>

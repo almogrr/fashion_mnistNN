@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clothing Identifier</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #result { font-size: 1.5em; margin-top: 10px; }
+        #uploadedImage { margin-top: 10px; max-width: 100%; }
+    </style>
+</head>
+<body>
+
+<h1>Clothing Identifier</h1>
+<input type="file" id="fileInput" accept="image/*">
+<button id="predictButton">Predict</button>
+
+<div id="result"></div>
+<img id="uploadedImage" alt="Uploaded Image">
+
+<!-- PyScript setup -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pyscript/1.0.0/pyscript.min.js"></script>
+<py-script>
+    import numpy as np
+    from PIL import Image
+    import io
+    import tensorflow as tf
+    from enum import Enum
+    import base64
+    from io import BytesIO
+    from pyscript import Element
+    
+    # Load the MNIST Fashion dataset
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()
+    x_train = x_train.reshape(x_train.shape[0], 28*28) / 255.0
+    x_test = x_test.reshape(x_test.shape[0], 28*28) / 255.0
+    
+    num_classes = 11
+    
+    class ClothingLabel(Enum):
+        T_SHIRT = 0
+        TROUSER = 1
+        PULLOVER = 2
+        DRESS = 3
+        COAT = 4
+        SANDAL = 5
+        SHIRT = 6
+        SNEAKER = 7
+        BAG = 8
+        ANKLE_BOOT = 9
+        NOT_CLOTHING = 10
+    
+    # Load the trained model
+    model = tf.keras.Sequential([
+        tf.keras.layers.Dense(128, activation='relu', input_shape=(28*28,)),
+        tf.keras.layers.Dense(num_classes, activation='sigmoid')
+    ])
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model.load_weights('model_weights.h5')
+    
+    def preprocess_image(image):
+        """
+        Preprocess the image by converting it to grayscale, resizing it to 28x28, and normalizing it.
+        """
+        image = image.convert('L')  # Convert to grayscale
+        image = image.resize((28, 28))  # Resize to 28x28
+        image_array = np.array(image).astype(np.float32) / 255.0  # Normalize
+        image_array = image_array.reshape(1, 28*28)  # Reshape for the model
+        return image_array
+    
+    def predict_image(image_array):
+        """
+        Make a prediction using the trained model.
+        """
+        prediction = model.predict(image_array)
+        return np.argmax(prediction, axis=1)[0]
+    
+    def upload_and_predict(event):
+        """
+        Upload the image and make a prediction.
+        """
+        file_input = Element('#fileInput').element.files
+        if file_input.length > 0:
+            file = file_input[0]
+            try:
+                # Read the file and preprocess the image
+                image = Image.open(io.BytesIO(file.read()))
+                image_array = preprocess_image(image)
+                label = predict_image(image_array)
+                label_text = ClothingLabel(label).name.replace('_', ' ').title()
+                if label_text == "Not Clothing":
+                    label_text = "This is not a clothing item."
+                # Convert the image to base64
+                buffered = BytesIO()
+                image.save(buffered, format="PNG")
+                img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                img_data = f"data:image/png;base64,{img_base64}"
+                # Update the UI with the image and result
+                Element('#uploadedImage').element.src = img_data
+                Element('#result').element.textContent = f"Identified: {label_text}"
+            except Exception as e:
+                Element('#result').element.textContent = f"Error: {str(e)}"
+    
+    # Attach event listener to button
+    Element('#predictButton').element.addEventListener('click', upload_and_predict)
+</py-script>
+
+</body>
+</html>
